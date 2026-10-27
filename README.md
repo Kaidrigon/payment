@@ -184,13 +184,83 @@ Supabase also offers client libraries and a REST API, but for this existing Fast
 
 **Important:** Changing only `MONGODB_URL` to a Supabase URL will not migrate this project. It requires schema design and code changes.
 
-## 6. Git and secret safety
+## Setting Up Your Own Razorpay Account (Live Payments)
 
-- Commit `.env.example`, `README.md`, and source code.
-- Do **not** commit `.env`, virtual environments, Python caches, or local secret files.
-- If a secret was ever committed, adding it to `.gitignore` does not remove it from Git history. Rotate the secret and clean the repository history as appropriate.
-- Never send `.env` to your friend over Git. Share credentials through a secure channel or have your friend create their own provider credentials.
+This project currently uses Razorpay in Test Mode. To accept real customer payments, the website owner must connect their own Razorpay merchant account.
 
-## 7. Current scope and next steps
+### 1. Create and activate a Razorpay account
 
-The current implementation is based on Razorpay and MongoDB Atlas. Paytm is not included yet. When adding Paytm, keep provider-specific API calls in a provider module and make sure payment verification and webhook handling follow Paytm's current official integration documentation. Test Paytm independently without breaking Razorpay.
+1. Visit [Razorpay](https://razorpay.com/) and create an account using your own business and contact details.
+2. Complete the account activation process and submit the required KYC, business, and bank account information.
+3. Add your actual website details if requested by Razorpay.
+4. Wait for Razorpay to approve and enable Live Mode for your account.
+
+Test Mode is available for development, but real payments require the appropriate account activation and payment-method permissions.
+
+### 2. Generate Live API keys
+
+1. Sign in to the [Razorpay Dashboard](https://dashboard.razorpay.com/).
+2. Switch from Test Mode to Live Mode.
+3. Open **Account & Settings → API Keys** (the exact menu may vary).
+4. Generate your Live API keys and securely save the Key ID and Key Secret.
+
+Update your local `.env` file with your own credentials:
+
+```dotenv
+RAZORPAY_KEY_ID=rzp_live_your_key_id
+RAZORPAY_KEY_SECRET=your_live_key_secret
+RAZORPAY_WEBHOOK_SECRET=your_live_webhook_secret
+```
+
+Never commit `.env` to Git or expose the Key Secret in frontend JavaScript. Keep the existing test credentials available separately for development.
+
+### 3. Configure the Razorpay webhook
+
+1. In the Razorpay Dashboard, open the webhook settings.
+2. Add your deployed backend URL, ending with:
+
+   ` /api/payments/webhook`
+
+3. Configure the events your backend handles, including `payment.captured` and `payment.failed`.
+4. Set a webhook secret and place the same secret in `RAZORPAY_WEBHOOK_SECRET` on the backend.
+5. Save the configuration and test that webhook events reach the deployed server.
+
+Use the Live Mode webhook configuration for live payments. Do not use a temporary ngrok URL for a permanent production setup.
+
+### 4. How real UPI payments work
+
+The current backend creates a Razorpay payment order, and the frontend opens Razorpay Checkout.
+
+Once Live Mode is correctly configured and UPI is enabled for the account:
+
+1. The customer opens checkout on the website.
+2. Razorpay Checkout presents the payment methods available for that account and transaction.
+3. The customer selects an available UPI option and approves the payment using their UPI app.
+4. The backend verifies the payment with Razorpay and processes the webhook.
+5. The order is marked `paid` only after the backend confirms a successful captured payment.
+
+The actual UPI options shown depend on Razorpay's current checkout support, account configuration, and eligibility. Test Mode does not represent a real money transfer.
+
+### 5. How QR-code payments work
+
+**Important:** The current project does not automatically generate a dedicated Razorpay UPI QR code merely because Live API keys are added.
+
+There are two different flows:
+
+- **QR option inside Checkout:** If Razorpay Checkout offers a QR payment option for the account and transaction, the customer can use that supported flow.
+- **A dedicated QR code for your website:** This requires a separate QR-code implementation using Razorpay's supported QR Code APIs, or another suitable Razorpay product.
+
+For a dedicated QR implementation, the backend would need to create the QR code using the Razorpay API, return the appropriate QR information to the frontend, and track the resulting payment. It must also verify payment status server-side and handle webhook retries safely. Do not mark an order paid merely because someone scanned a QR code.
+
+See the [official Razorpay QR Code documentation](https://razorpay.com/docs/api/qr-codes/) before implementing this feature.
+
+### 6. Before accepting real money
+
+- Test the complete payment flow before launch.
+- Confirm that Live Mode credentials are used only in the deployed backend.
+- Confirm that successful captured payments update the correct order.
+- Test failed payments, duplicate webhook deliveries, and retry behavior.
+- Confirm that UPI and any QR features you intend to offer are enabled and available for your account.
+- Keep API secrets out of Git and frontend code.
+
+**Note:** Replacing the test credentials with Live Mode credentials enables the existing integration to use the live Razorpay environment, but it does not automatically implement a dedicated QR-code feature or guarantee that every payment method is enabled.
